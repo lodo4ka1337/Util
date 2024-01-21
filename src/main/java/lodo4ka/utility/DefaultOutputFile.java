@@ -4,7 +4,7 @@ public enum DefaultOutputFile {
     INTEGERS_FILENAME("integers.txt"),
     FLOATS_FILENAME("floats.txt"),
     STRINGS_FILENAME("strings.txt"),
-    PATH("."),
+    PATH("./"),
     PREFIX("");
 
     DefaultOutputFile(String value) {
