@@ -1,6 +1,6 @@
 package lodo4ka;
 
-import lodo4ka.utility.OutputFileNames;
+import lodo4ka.utility.DefaultOutputFile;
 import lodo4ka.utility.StringParser;
 import org.apache.commons.cli.*;
 
@@ -9,12 +9,11 @@ import java.math.BigDecimal;
 import java.math.BigInteger;
 import java.math.RoundingMode;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Paths;
 import java.util.*;
 
 public class Util {
-    public Util() {
-        configCLI();
-    }
 
     private Options options;
     private CommandLineParser parser;
@@ -25,9 +24,9 @@ public class Util {
     List<BigDecimal> floatList = new ArrayList<>();
     List<String> stringList = new ArrayList<>();
 
-    String intFileName;
-    String floatFileName;
-    String stringFileName;
+    public Util() {
+        configCLI();
+    }
 
     private void configCLI() {
 
@@ -35,13 +34,13 @@ public class Util {
 
         Option outputPath = new Option("o", "output", true, "Output path");
         outputPath.setRequired(false);
-        outputPath.setArgs(1);
+        outputPath.setOptionalArg(true);
         outputPath.setType(String.class);
         options.addOption(outputPath);
 
         Option filePrefix = new Option("p", "prefix", true, "Output files prefix");
         filePrefix.setRequired(false);
-        filePrefix.setArgs(1);
+        filePrefix.setOptionalArg(true);
         filePrefix.setType(String.class);
         options.addOption(filePrefix);
 
@@ -49,16 +48,13 @@ public class Util {
         append.setRequired(false);
         options.addOption(append);
 
-        Option shortStat = new Option("s", "short", false, "Brief type statistics in console");
+        Option shortStat = new Option("s", "short", false, "Short type statistics in console");
         shortStat.setRequired(false);
+        options.addOption(shortStat);
 
         Option fullStat = new Option("f", "full", false, "Full type statistics in console");
         fullStat.setRequired(false);
-
-        OptionGroup statGroup = new OptionGroup();
-        statGroup.addOption(shortStat);
-        statGroup.addOption(fullStat);
-        options.addOptionGroup(statGroup);
+        options.addOption(fullStat);
 
         parser = new DefaultParser();
 
@@ -72,22 +68,29 @@ public class Util {
         try {
 
             cmd = parser.parse(options, args);
-            if (cmd.getArgs().length == 0)
-                throw new ParseException("Input file(s) argument is missing");
         }
         catch (ParseException e) {
             System.out.println(e.getMessage());
-            formatter.printHelp("util.jar [OPTIONS] <FILES>", options);
+            formatter.printHelp("util.jar [OPTIONS] <INPUT_FILES>", options);
             System.exit(1);
+
         }
 
     }
 
     private void readInput() {
 
-        for (String inputFile : cmd.getArgs()) {
+        if (cmd.getArgs().length == 0) {
+            System.out.println("Input files argument is missing");
+            formatter.printHelp("util.jar [OPTIONS] <INPUT_FILES>", options);
+            System.exit(1);
+        }
 
-            try(BufferedReader br = new BufferedReader(new InputStreamReader(new FileInputStream(inputFile), StandardCharsets.UTF_8))) {
+        List<String> invalidFileNames = new ArrayList<>();
+
+        for (String inputFileName : cmd.getArgs()) {
+
+            try(BufferedReader br = new BufferedReader(new InputStreamReader(Files.newInputStream(Paths.get(inputFileName)), StandardCharsets.UTF_8))) {
 
                 String line = br.readLine();
 
@@ -110,45 +113,63 @@ public class Util {
                     stringList.add(line);
                     line = br.readLine();
                 }
-            } catch (IOException e) {
-                System.out.println(e.getMessage());
-                System.exit(1);
+            } catch (IOException ignored) {
+
+                invalidFileNames.add(inputFileName);
+
             }
 
+        }
+
+        if (!invalidFileNames.isEmpty()) {
+
+            System.out.print("Invalid input file(s): ");
+            for (String i : invalidFileNames) {
+                System.out.print(i + " ");
+            }
+            System.out.println();
+            if (intList.isEmpty() && floatList.isEmpty() && stringList.isEmpty())
+                System.exit(1);
         }
 
     }
 
     private void writeOutput() {
 
-        String path = ".";
-        if (cmd.hasOption("output"))
+        String path = DefaultOutputFile.PATH.toString();
+        if (cmd.getOptionValue("output") != null)
             path = cmd.getOptionValue("output");
 
-        String prefix = "";
-        if (cmd.hasOption("prefix"))
+        String prefix = DefaultOutputFile.PREFIX.toString();
+        if (cmd.getOptionValue("prefix") != null)
             prefix = cmd.getOptionValue("prefix");
 
         if (!intList.isEmpty()) {
-            intFileName = path + "/" + prefix + OutputFileNames.INTEGERS;
-            writeToFile(intList, intFileName);
+
+            boolean s = writeToFile(intList, path, prefix, DefaultOutputFile.INTEGERS_FILENAME.toString());
+
+            if (!s) {
+                path = DefaultOutputFile.PATH.toString();
+                writeToFile(intList, path, prefix, DefaultOutputFile.INTEGERS_FILENAME.toString());
+            }
+
         }
 
         if (!floatList.isEmpty()) {
-            floatFileName = path + "/" + prefix + OutputFileNames.FLOATS;
-            writeToFile(floatList, floatFileName);
+
+            writeToFile(floatList, path, prefix, DefaultOutputFile.FLOATS_FILENAME.toString());
         }
 
         if (!stringList.isEmpty()) {
-            stringFileName = path + "/" + prefix + OutputFileNames.STRINGS;
-            writeToFile(stringList, stringFileName);
+
+            writeToFile(stringList, path, prefix, DefaultOutputFile.STRINGS_FILENAME.toString());
         }
 
     }
 
-    private <T> void  writeToFile(List<T> list, String outputFileName) {
+    private <T> boolean  writeToFile(List<T> list, String path, String prefix, String outputFileName) {
 
-        File file = new File(outputFileName);
+        File file = new File(path + "/" + prefix + outputFileName);
         file.getParentFile().mkdirs();
 
         try (PrintWriter intWriter = new PrintWriter(new OutputStreamWriter(new FileOutputStream(file, cmd.hasOption("append")), StandardCharsets.UTF_8))) {
@@ -156,20 +177,17 @@ public class Util {
                 intWriter.println(item);
             }
 
-        } catch (IOException e) {
-            System.out.println(e.getMessage());
-            System.exit(1);
+        } catch (IOException ignored) {
+
+            System.out.println("Invalid path: " + path + ". Setting output path to default (current directory)");
+            return false;
+
         }
+
+        return true;
     }
 
     private void typeStat() {
-
-        if (cmd.hasOption("short")) {
-            int itemNumber = intList.size() + floatList.size() + stringList.size();
-            System.out.println("Short type statistics: " +
-                    "\n\n\tNumber of items written to output files: " + itemNumber);
-            return;
-        }
 
         if (cmd.hasOption("full")) {
 
@@ -187,7 +205,7 @@ public class Util {
                 BigDecimal intAvg = new BigDecimal(intSum).divide(BigDecimal.valueOf(intList.size()), 3, RoundingMode.CEILING);
 
                 sb.append("\n\n\tInteger type statistics:" +
-                          "\n\t\tNumber of integers: ").append(intNumber)
+                                "\n\t\tNumber of integers: ").append(intNumber)
                         .append("\n\t\tMin: ").append(intMin)
                         .append("\n\t\tMax: ").append(intMax)
                         .append("\n\t\tSum: ").append(intSum)
@@ -206,7 +224,7 @@ public class Util {
                 BigDecimal floatAvg = floatSum.divide(BigDecimal.valueOf(floatList.size()), 3, RoundingMode.CEILING);
 
                 sb.append("\n\n\tFloat type statistics:" +
-                          "\n\t\tNumber of floats: ").append(floatNumber)
+                                "\n\t\tNumber of floats: ").append(floatNumber)
                         .append( "\n\t\tMin: ").append(floatMin)
                         .append("\n\t\tMax: ").append(floatMax)
                         .append("\n\t\tSum: ").append(floatSum)
@@ -219,11 +237,42 @@ public class Util {
                 String shortestString = stringList.stream().min(Comparator.comparingInt(String::length)).get();
 
                 sb.append("\n\n\tString type statistics:" +
-                          "\n\t\tNumber of strings: ").append(stringNumber)
+                                "\n\t\tNumber of strings: ").append(stringNumber)
                         .append("\n\t\tLongest: ").append(longestString)
                         .append(" (").append(longestString.length()).append(" chars)")
                         .append("\n\t\tShortest: ").append(shortestString)
                         .append(" (").append(shortestString.length()).append(" chars)");
+            }
+
+            System.out.println(sb);
+            return;
+        }
+
+        if (cmd.hasOption("short")) {
+            StringBuilder sb = new StringBuilder().append("Short type statistics:");
+
+            if (!intList.isEmpty()) {
+
+                int intNumber = intList.size();
+
+                sb.append("\n\n\tInteger type statistics:" +
+                                "\n\t\tNumber of integers: ").append(intNumber);
+            }
+
+            if (!floatList.isEmpty()) {
+
+                int floatNumber = floatList.size();
+
+                sb.append("\n\n\tFloat type statistics:" +
+                                "\n\t\tNumber of floats: ").append(floatNumber);
+            }
+
+            if (!stringList.isEmpty()) {
+
+                int stringNumber = stringList.size();
+
+                sb.append("\n\n\tString type statistics:" +
+                                "\n\t\tNumber of strings: ").append(stringNumber);
             }
 
             System.out.println(sb);
