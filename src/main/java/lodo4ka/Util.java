@@ -56,6 +56,10 @@ public class Util {
         fullStat.setRequired(false);
         options.addOption(fullStat);
 
+        Option help = new Option("h", "help", false, "Application usage help");
+        help.setRequired(false);
+        options.addOption(help);
+
         parser = new DefaultParser();
 
         formatter = new HelpFormatter();
@@ -78,6 +82,13 @@ public class Util {
 
     }
 
+    private void checkHelp() {
+        if (cmd.hasOption("help")) {
+            formatter.printHelp("util.jar [OPTIONS] <INPUT_FILES>", options);
+            System.exit(1);
+        }
+    }
+
     private void readInput() {
 
         if (cmd.getArgs().length == 0) {
@@ -92,26 +103,27 @@ public class Util {
 
             try(BufferedReader br = new BufferedReader(new InputStreamReader(Files.newInputStream(Paths.get(inputFileName)), StandardCharsets.UTF_8))) {
 
-                String line = br.readLine();
+                String line;
 
-                while (line != null) {
+                while ((line = br.readLine()) != null) {
+
+                    if (line.isEmpty()) {
+                        continue;
+                    }
 
                     BigInteger i = StringParser.strToInteger(line);
                     if (i != null) {
                         intList.add(i);
-                        line = br.readLine();
                         continue;
                     }
 
                     BigDecimal d = StringParser.strToFloat(line);
                     if (d != null) {
                         floatList.add(d);
-                        line = br.readLine();
                         continue;
                     }
 
                     stringList.add(line);
-                    line = br.readLine();
                 }
             } catch (IOException ignored) {
 
@@ -136,13 +148,18 @@ public class Util {
 
     private void writeOutput() {
 
-        String path = DefaultOutputFile.PATH.toString();
-        if (cmd.getOptionValue("output") != null)
-            path = cmd.getOptionValue("output");
+        String path;
+        if (cmd.getOptionValue("output") != null) {
+            if (cmd.getOptionValue("output").endsWith("/"))
+                path = cmd.getOptionValue("output");
+            else path = cmd.getOptionValue("output") + "/" ;
+        }
+        else path = DefaultOutputFile.PATH.toString();
 
-        String prefix = DefaultOutputFile.PREFIX.toString();
+        String prefix;
         if (cmd.getOptionValue("prefix") != null)
             prefix = cmd.getOptionValue("prefix");
+        else prefix = DefaultOutputFile.PREFIX.toString();
 
         if (!intList.isEmpty()) {
 
@@ -169,7 +186,7 @@ public class Util {
 
     private <T> boolean  writeToFile(List<T> list, String path, String prefix, String outputFileName) {
 
-        File file = new File(path + "/" + prefix + outputFileName);
+        File file = new File(path + prefix + outputFileName);
         file.getParentFile().mkdirs();
 
         try (PrintWriter intWriter = new PrintWriter(new OutputStreamWriter(new FileOutputStream(file, cmd.hasOption("append")), StandardCharsets.UTF_8))) {
@@ -177,8 +194,9 @@ public class Util {
                 intWriter.println(item);
             }
 
-        } catch (IOException ignored) {
+        } catch (IOException e) {
 
+            System.out.println(e.getMessage());
             System.out.println("Invalid path: " + path + ". Setting output path to default (current directory)");
             return false;
 
@@ -283,6 +301,9 @@ public class Util {
     public void filter(String[] args) {
 
         cmdParse(args);
+
+        checkHelp();
+
         readInput();
         writeOutput();
         typeStat();
